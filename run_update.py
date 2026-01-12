@@ -17,7 +17,7 @@ def ema_stack_score(close, ema20, ema89, ema200) -> int:
     return score  # 0..9
 
 def main():
-    sheet_id = os.environ.get("1GhUgwzQzqETrwm5XpzL9muzvCm3L4fVRWYmCK-W9fjE")
+    sheet_id = os.environ.get("SHEET_ID")
     if not sheet_id:
         raise RuntimeError("Missing SHEET_ID environment variable")
 
@@ -62,3 +62,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
