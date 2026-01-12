@@ -1,0 +1,32 @@
+name: Update Crypto Dashboard
+
+on:
+  schedule:
+    - cron: "30 0 * * *"   # 08:30 TW
+    - cron: "0 9 * * *"    # 17:00 TW
+    - cron: "0 13 * * *"   # 21:00 TW
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Write service account json
+        env:
+          SA_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          echo "$SA_JSON" > service_account.json
+
+      - name: Run update
+        env:
+          SHEET_ID: ${{ secrets.SHEET_ID }}
+        run: python run_update.py
