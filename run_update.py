@@ -90,6 +90,12 @@ def main():
 
     write_table(ws_latest, latest)
     append_rows(ws_history, history_rows)
-
+    
+    # === THÊM DÒNG NÀY ĐỂ VẼ DASHBOARD ===
+    print("🎨 Updating Dashboard visuals...")
+    update_dashboard_visuals(ss, latest)
+    print("✅ Done!")
+    
 if __name__ == "__main__":
     main()
+
