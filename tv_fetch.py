@@ -18,6 +18,9 @@ def _fetch(symbol: str, exchange: str, screener: str, interval: Interval) -> dic
         "EMA20": ind.get("EMA20"),
         "EMA89": ind.get("EMA89"),
         "EMA200": ind.get("EMA200"),
+        "RSI": ind.get("RSI"),          # Mới: Sức mạnh giá
+        "MACD": ind.get("MACD.macd"),   # Mới: MACD Line
+        "Signal": ind.get("MACD.signal"),# Mới: Signal Line
         "RECOMMENDATION": a.summary.get("RECOMMENDATION"),
     }
 

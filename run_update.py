@@ -1,37 +1,60 @@
-# run_update.py
 import os
 from datetime import datetime, timezone, timedelta
-
 from config import COINS, EXCHANGE, SCREENER, TAB_LATEST, TAB_HISTORY
 from tv_fetch import fetch_1d_4h
 from sheets_writer import open_spreadsheet, ensure_tab, write_table, append_rows
 
-def ema_stack_score(close, ema20, ema89, ema200) -> int:
-    score = 0
-    if close is not None and ema200 is not None and close > ema200:
-        score += 4
-    if ema89 is not None and ema200 is not None and ema89 > ema200:
-        score += 3
-    if ema20 is not None and ema89 is not None and ema20 > ema89:
-        score += 2
-    return score  # 0..9
+def get_pro_status(tf, close, ema20, ema200, rsi, macd, signal):
+    # 1. Xác định Trend
+    trend = "NEUTRAL"
+    if close > ema200:
+        trend = "BULL"
+    elif close < ema200:
+        trend = "BEAR"
+    
+    # 2. Xác định Momentum (MACD)
+    momentum = "WEAK"
+    if macd > signal:
+        momentum = "UP"
+    else:
+        momentum = "DOWN"
+
+    # 3. Tổng hợp Trạng thái Pro
+    status = "WAIT"
+    note = ""
+
+    if trend == "BULL":
+        if close > ema20 and momentum == "UP":
+            status = "🚀 STRONG BUY"
+        elif close < ema20:
+            status = "📉 DIP BUY (Watch)"  # Giá trên EMA200 nhưng dưới EMA20 -> Mua khi điều chỉnh
+        else:
+            status = "✅ HOLD"
+    elif trend == "BEAR":
+        if momentum == "DOWN":
+            status = "DD STRONG SELL"
+        else:
+            status = "⚠️ REVERSAL RISK" # Giá giảm nhưng momentum tăng -> Coi chừng đảo chiều
+
+    # Cảnh báo RSI
+    if rsi > 70: note = " (Overbought🔥)"
+    if rsi < 30: note = " (Oversold💎)"
+
+    return f"{status}{note}", trend, round(rsi, 1)
 
 def main():
-    print("Debug: All env vars:", list(os.environ.keys())) 
     sheet_id = os.environ.get("SHEET_ID")
-    print("Debug: SHEET_ID value:", sheet_id)  
     if not sheet_id:
         raise RuntimeError("Missing SHEET_ID environment variable")
 
-    # Taiwan time (UTC+8)
     now_tw = datetime.now(timezone.utc) + timedelta(hours=8)
     ts = now_tw.strftime("%Y-%m-%d %H:%M")
 
+    # Header mới chuyên nghiệp hơn
     latest = [[
-        "Time(TW)", "Symbol", "Name", "TF",
-        "Open", "Close", "Volume",
-        "EMA20", "EMA89", "EMA200",
-        "EMA Stack Score(0-9)", "Trend", "TV_Recommendation"
+        "Time(TW)", "Symbol", "TF", 
+        "Price", "RSI", "Trend", "Pro Status", 
+        "EMA20", "EMA200", "MACD_Hist"
     ]]
     history_rows = []
 
@@ -39,22 +62,28 @@ def main():
         data = fetch_1d_4h(sym, EXCHANGE, SCREENER)
         for tf in ("1D", "4H"):
             d = data[tf]
-            o = d.get("open")
             c = d.get("close")
-            v = d.get("volume")
             e20 = d.get("EMA20")
-            e89 = d.get("EMA89")
             e200 = d.get("EMA200")
-            rec = d.get("RECOMMENDATION")
+            rsi = d.get("RSI")
+            macd = d.get("MACD")
+            sig = d.get("Signal")
+            
+            # Tính toán logic
+            status_str, trend, rsi_val = get_pro_status(tf, c, e20, e200, rsi, macd, sig)
+            macd_hist = round(macd - sig, 2) if (macd and sig) else 0
 
-            score = ema_stack_score(c, e20, e89, e200)
-            trend = "BULL" if (c is not None and e200 is not None and c > e200) else "BEAR/NEUTRAL"
-
-            row = [ts, sym, name, tf, o, c, v, e20, e89, e200, score, trend, rec]
+            # Format hàng dữ liệu
+            row = [
+                ts, sym, tf, 
+                c, rsi_val, trend, status_str,
+                e20, e200, macd_hist
+            ]
+            
             latest.append(row)
             history_rows.append(row)
 
-    sa_path = "service_account.json"  # created by GitHub Actions step
+    sa_path = "service_account.json"
     ss = open_spreadsheet(sa_path, sheet_id)
     ws_latest = ensure_tab(ss, TAB_LATEST)
     ws_history = ensure_tab(ss, TAB_HISTORY)
