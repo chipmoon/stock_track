@@ -1,26 +1,31 @@
 import os
 from datetime import datetime, timezone, timedelta
-from config import EXCHANGE, SCREENER, TAB_LATEST, TAB_HISTORY, COINS as DEFAULT_COINS
+from config import COINS as DEFAULT_COINS, TAB_LATEST, TAB_HISTORY
 from tv_fetch import fetch_1d_4h
 from sheets_writer import open_spreadsheet, ensure_tab, write_table, append_rows, update_dashboard_visuals
 
-# --- HÀM MỚI: Đọc danh sách coin từ Sheet 'config' ---
+# --- Đọc danh sách coin từ Sheet 'config' (4 cột: Symbol|Name|Exchange|Screener) ---
 def get_coins_from_sheet(ss):
     try:
         ws = ss.worksheet("config")
-        # Lấy toàn bộ giá trị, bỏ dòng header đầu tiên
-        rows = ws.get_all_values()[1:] 
+        rows = ws.get_all_values()[1:]  # Bỏ header
         
-        # Filter: Chỉ lấy dòng có Symbol (Cột A không rỗng)
-        # Format trả về: [('BTCUSDT', 'Bitcoin'), ('ETHUSDT', 'Ethereum')...]
-        sheet_coins = [(r[0].strip(), r[1].strip() if len(r)>1 else r[0].strip()) for r in rows if r[0].strip()]
-        
-        if not sheet_coins:
-            print("⚠️ Tab 'config' is empty. Using default list.")
-            return DEFAULT_COINS
+        coins = []
+        for r in rows:
+            if not r[0].strip(): 
+                continue
+            sym = r[0].strip()
+            name = r[1].strip() if len(r) > 1 and r[1].strip() else sym
+            exc = r[2].strip() if len(r) > 2 and r[2].strip() else "BINANCE"
+            scr = r[3].strip() if len(r) > 3 and r[3].strip() else "crypto"
+            coins.append((sym, name, exc, scr))
             
-        print(f"📋 Loaded {len(sheet_coins)} coins from Sheet 'config'.")
-        return sheet_coins
+        if coins:
+            print(f"📋 Loaded {len(coins)} symbols from Sheet 'config'.")
+            return coins
+        else:
+            print("⚠️ Tab 'config' is empty. Using default list from config.py")
+            return DEFAULT_COINS
     except Exception as e:
         print(f"⚠️ Could not read 'config' tab ({e}). Using default list.")
         return DEFAULT_COINS
@@ -28,8 +33,10 @@ def get_coins_from_sheet(ss):
 def get_pro_status(tf, close, ema20, ema200, rsi, macd, signal):
     trend = "NEUTRAL"
     if close and ema200:
-        if close > ema200: trend = "BULL"
-        elif close < ema200: trend = "BEAR"
+        if close > ema200: 
+            trend = "BULL"
+        elif close < ema200: 
+            trend = "BEAR"
     
     momentum = "WEAK"
     if macd is not None and signal is not None:
@@ -39,21 +46,29 @@ def get_pro_status(tf, close, ema20, ema200, rsi, macd, signal):
     note = ""
 
     if trend == "BULL":
-        if close and ema20 and close > ema20 and momentum == "UP": status = "🚀 STRONG BUY"
-        elif close and ema20 and close < ema20: status = "📉 DIP BUY"
-        else: status = "✅ HOLD"
+        if close and ema20 and close > ema20 and momentum == "UP": 
+            status = "🚀 STRONG BUY"
+        elif close and ema20 and close < ema20: 
+            status = "📉 DIP BUY"
+        else: 
+            status = "✅ HOLD"
     elif trend == "BEAR":
-        if momentum == "DOWN": status = "DD STRONG SELL"
-        else: status = "⚠️ REVERSAL RISK"
+        if momentum == "DOWN": 
+            status = "🔴 STRONG SELL"
+        else: 
+            status = "⚠️ REVERSAL RISK"
 
-    if rsi and rsi > 70: note = " (Overbought🔥)"
-    if rsi and rsi < 30: note = " (Oversold💎)"
+    if rsi and rsi > 70: 
+        note = " (Overbought🔥)"
+    if rsi and rsi < 30: 
+        note = " (Oversold💎)"
 
     return f"{status}{note}", trend, round(rsi, 1) if rsi else 0
 
 def main():
     sheet_id = os.environ.get("SHEET_ID")
-    if not sheet_id: raise RuntimeError("Missing SHEET_ID")
+    if not sheet_id: 
+        raise RuntimeError("Missing SHEET_ID environment variable")
 
     now_tw = datetime.now(timezone.utc) + timedelta(hours=8)
     ts = now_tw.strftime("%Y-%m-%d %H:%M")
@@ -61,7 +76,7 @@ def main():
     sa_path = "service_account.json"
     ss = open_spreadsheet(sa_path, sheet_id)
     
-    # === LẤY DANH SÁCH COIN ĐỘNG ===
+    # Lấy danh sách coin động từ Sheet config
     current_coins = get_coins_from_sheet(ss)
 
     latest = [[
@@ -71,18 +86,25 @@ def main():
     ]]
     history_rows = []
 
-    print(f"🚀 Fetching data for {len(current_coins)} coins...")
+    print(f"🚀 Fetching data for {len(current_coins)} symbols...")
 
-    for sym, name in current_coins:
+    for item in current_coins:
         try:
-            # Tự động thêm 'BINANCE:' nếu user quên nhập trong Sheet
-            # tradingview-ta cần format "EXCHANGE:SYMBOL" nếu không dùng hàm search
-            # Ở đây ta giả định dùng EXCHANGE từ config (BINANCE)
-            
-            # Fix: nếu user nhập "BINANCE:BTCUSDT" thì giữ nguyên, nếu nhập "BTCUSDT" thì ghép
-            clean_sym = sym.replace("BINANCE:", "") 
-            
-            data = fetch_1d_4h(clean_sym, EXCHANGE, SCREENER)
+            # Unpack theo format (sym, name, exchange, screener)
+            sym = item[0]
+            name = item[1] if len(item) > 1 else sym
+            exchange = item[2] if len(item) > 2 else "BINANCE"
+            screener = item[3] if len(item) > 3 else "crypto"
+
+            # Auto-detect nếu user quên điền Exchange/Screener
+            if "XAU" in sym.upper() or "XAG" in sym.upper() or "EURUSD" in sym.upper():
+                if exchange == "BINANCE": 
+                    exchange = "OANDA"
+                if screener == "crypto": 
+                    screener = "cfd"
+
+            # Fetch data cho cả 1D và 4H
+            data = fetch_1d_4h(sym, exchange, screener)
             
             for tf in ("1D", "4H"):
                 d = data[tf]
@@ -100,9 +122,11 @@ def main():
                 latest.append(row)
                 history_rows.append(row)
                 
+            print(f"✅ {sym} ({exchange}/{screener})")
+                
         except Exception as e:
             print(f"❌ Error fetching {sym}: {e}")
-            latest.append([ts, sym, "ERROR", str(e)])
+            latest.append([ts, sym, "ERROR", str(e), 0, "N/A", "ERROR", 0, 0, 0])
 
     ws_latest = ensure_tab(ss, TAB_LATEST)
     ws_history = ensure_tab(ss, TAB_HISTORY)
@@ -112,7 +136,7 @@ def main():
     
     print("🎨 Updating Dashboard visuals...")
     update_dashboard_visuals(ss, latest)
-    print("✅ Done!")
+    print("✅ Done! Dashboard updated successfully.")
 
 if __name__ == "__main__":
     main()
