@@ -2,7 +2,7 @@ import os
 from datetime import datetime, timezone, timedelta
 from config import COINS, EXCHANGE, SCREENER, TAB_LATEST, TAB_HISTORY
 from tv_fetch import fetch_1d_4h
-from sheets_writer import open_spreadsheet, ensure_tab, write_table, append_rows
+from sheets_writer import open_spreadsheet, ensure_tab, write_table, append_rows, update_dashboard_visuals
 
 def get_pro_status(tf, close, ema20, ema200, rsi, macd, signal):
     # 1. Xác định Trend
@@ -98,4 +98,5 @@ def main():
     
 if __name__ == "__main__":
     main()
+
 
