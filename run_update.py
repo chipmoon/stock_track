@@ -17,7 +17,9 @@ def ema_stack_score(close, ema20, ema89, ema200) -> int:
     return score  # 0..9
 
 def main():
+    print("Debug: All env vars:", list(os.environ.keys())) 
     sheet_id = os.environ.get("SHEET_ID")
+    print("Debug: SHEET_ID value:", sheet_id)  
     if not sheet_id:
         raise RuntimeError("Missing SHEET_ID environment variable")
 
@@ -62,4 +64,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
