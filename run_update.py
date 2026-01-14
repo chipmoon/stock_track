@@ -108,6 +108,22 @@ def get_buffett_signal(close, ema20, ema200, rsi, macd, signal, adx, volume, vol
     }
 
 
+def normalize_value(value):
+    """
+    Chuẩn hóa giá trị thành string sạch (loại bỏ spaces, force uppercase cho text)
+    Đảm bảo filter Google Sheets hoạt động 100%
+    """
+    if value is None:
+        return ""
+    
+    # Nếu là số, giữ nguyên
+    if isinstance(value, (int, float)):
+        return value
+    
+    # Nếu là string, clean và uppercase
+    return str(value).strip().upper()
+
+
 def main():
     sheet_id = os.environ.get("SHEET_ID")
     if not sheet_id: 
@@ -119,7 +135,7 @@ def main():
     sa_path = "service_account.json"
     
     print("🔐 Connecting to Google Sheets...")
-    ss = open_spreadsheet(sa_path, sheet_id)  # Auto retry if 503
+    ss = open_spreadsheet(sa_path, sheet_id)
     
     current_coins = get_coins_from_sheet(ss)
 
@@ -141,7 +157,7 @@ def main():
             screener = item[3] if len(item) > 3 else "crypto"
 
             # Auto-detect Forex/Gold
-            if any(x in sym.upper() for x in ["XAU", "XAG", "EURUSD", "GBPUSD"]):
+            if any(x in sym.upper() for x in ["XAU", "XAG", "EURUSD", "GBPUSD", "USDJPY"]):
                 if exchange == "BINANCE": 
                     exchange = "OANDA"
                 if screener == "crypto": 
@@ -168,23 +184,27 @@ def main():
                 
                 result = get_buffett_signal(c, e20, e200, rsi, macd, sig, adx, vol, vol_ma, bb_u, bb_l, pivot, s1, r1)
 
-                # STANDARDIZE (fix filter issue)
-                clean_symbol = sym.split(":")[-1].strip()
-                timeframe = tf.strip().upper()
+                # === BEST METHOD: Normalize mọi giá trị text ===
+                clean_symbol = normalize_value(sym.split(":")[-1])  # "BTCUSDT" not "BINANCE:BTCUSDT"
+                timeframe = normalize_value(tf)                      # "1D" or "4H" - guaranteed clean
                 
                 row = [
-                    ts, 
-                    clean_symbol,
-                    timeframe,
-                    c, 
-                    result["rsi"], 
-                    result["adx"],
-                    result["volume_strength"],
-                    result["trend"], 
-                    result["trend_quality"],
-                    result["signal"], 
-                    result["confidence"],
-                    e20, e200, pivot, s1, r1
+                    ts,                                    # Time (keep as-is)
+                    clean_symbol,                          # Symbol (cleaned)
+                    timeframe,                             # TF (normalized to "1D" or "4H")
+                    c,                                     # Price (number)
+                    result["rsi"],                         # RSI (number)
+                    result["adx"],                         # ADX (number)
+                    normalize_value(result["volume_strength"]),  # Vol.Strength (text)
+                    normalize_value(result["trend"]),            # Trend (text)
+                    normalize_value(result["trend_quality"]),    # Quality (text)
+                    result["signal"],                            # Signal (keep emoji)
+                    result["confidence"],                        # Confidence (number)
+                    e20,                                   # EMA20 (number)
+                    e200,                                  # EMA200 (number)
+                    pivot,                                 # Pivot (number)
+                    s1,                                    # S1 (number)
+                    r1                                     # R1 (number)
                 ]
                 latest.append(row)
                 history_rows.append(row)
@@ -193,7 +213,16 @@ def main():
                 
         except Exception as e:
             print(f"❌ Error fetching {sym}: {e}")
-            latest.append([ts, sym, "ERROR", 0, 0, 0, "N/A", "N/A", "N/A", "ERROR", 0, 0, 0, 0, 0, 0])
+            # Error row với chuẩn hóa
+            latest.append([
+                ts, 
+                normalize_value(sym), 
+                "ERROR", 
+                0, 0, 0, 
+                "N/A", "N/A", "N/A", 
+                "ERROR", 
+                0, 0, 0, 0, 0, 0
+            ])
 
     print("📝 Writing to Google Sheets...")
     ws_latest = ensure_tab(ss, TAB_LATEST)
@@ -201,12 +230,27 @@ def main():
 
     write_table(ws_latest, latest)
     append_rows(ws_history, history_rows)
-
-    # === FIX FILTER ISSUE: Force TF column to plain text ===
-    print("🔧 Cleaning TF column for filter compatibility...")
-    tf_col = ws_latest.col_values(3)  # Column C (TF)
-    cleaned_tf = [[str(v).strip().upper()] for v in tf_col]
-    ws_latest.update("C1", cleaned_tf, value_input_option="USER_ENTERED")
+    
+    # === EXTRA SAFETY: Force clean TF column ===
+    print("🔧 Ensuring TF column is filter-ready...")
+    try:
+        # Lấy toàn bộ cột TF (C)
+        tf_values = ws_latest.col_values(3)
+        
+        # Rebuild: strip spaces, force uppercase
+        cleaned_tf = []
+        for i, val in enumerate(tf_values):
+            if i == 0:  # Header
+                cleaned_tf.append(["TF"])
+            else:
+                clean_val = str(val).strip().upper() if val else ""
+                cleaned_tf.append([clean_val])
+        
+        # Ghi đè cột C
+        ws_latest.update("C1", cleaned_tf, value_input_option="USER_ENTERED")
+        print("✅ TF column cleaned and standardized")
+    except Exception as e:
+        print(f"⚠️ TF cleanup warning (non-critical): {e}")
     
     print("🎨 Updating Dashboard...")
     update_dashboard_visuals(ss, latest)
@@ -214,4 +258,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
