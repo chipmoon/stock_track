@@ -201,6 +201,12 @@ def main():
 
     write_table(ws_latest, latest)
     append_rows(ws_history, history_rows)
+
+    # === FIX FILTER ISSUE: Force TF column to plain text ===
+    print("🔧 Cleaning TF column for filter compatibility...")
+    tf_col = ws_latest.col_values(3)  # Column C (TF)
+    cleaned_tf = [[str(v).strip().upper()] for v in tf_col]
+    ws_latest.update("C1", cleaned_tf, value_input_option="USER_ENTERED")
     
     print("🎨 Updating Dashboard...")
     update_dashboard_visuals(ss, latest)
@@ -208,3 +214,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
