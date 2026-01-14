@@ -12,7 +12,8 @@ COINS = [
     ("LINKUSDT", "Chainlink", "BINANCE", "crypto"),
     
     # Gold / Forex
-    ("XAUUSD", "Gold Spot", "OANDA", "cfd"), 
+    ("XAUUSD", "Gold Spot", "OANDA", "cfd"),
+    ("XAGUSD", "Silver Spot", "OANDA", "cfd"),
     # Mẹo: Dùng screener='cfd' cho OANDA/FXCM thường ổn định hơn 'forex' với library này
 ]
 
@@ -22,3 +23,4 @@ SCREENER = "crypto"
 
 TAB_LATEST = "latest"
 TAB_HISTORY = "history"
+
