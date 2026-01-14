@@ -6,10 +6,10 @@ from tv_fetch import fetch_1d_4h
 from sheets_writer import open_spreadsheet, ensure_tab, write_table, append_rows, update_dashboard_visuals
 
 def get_coins_from_sheet(ss):
-    """Đọc danh sách coin từ Sheet 'config' (4 cột: Symbol|Name|Exchange|Screener)"""
+    """Đọc danh sách coin từ Sheet 'config'"""
     try:
         ws = ss.worksheet("config")
-        rows = ws.get_all_values()[1:]  # Bỏ header
+        rows = ws.get_all_values()[1:]
         
         coins = []
         for r in rows:
@@ -33,15 +33,8 @@ def get_coins_from_sheet(ss):
 
 
 def get_buffett_signal(close, ema20, ema200, rsi, macd, signal, adx, volume, volume_ma, bb_upper, bb_lower, pivot, s1, r1):
-    """
-    Warren Buffett Style Logic:
-    1. Trend Quality (ADX > 25 = Strong, < 20 = Weak)
-    2. Value Zone (RSI extreme + Price near support/resistance)
-    3. Volume Confirmation (Volume > MA)
-    4. Risk Management (BB squeeze, Pivot levels)
-    """
+    """Warren Buffett Style Logic"""
     
-    # 1. Trend Analysis
     trend = "NEUTRAL"
     trend_quality = "WEAK"
     
@@ -57,74 +50,51 @@ def get_buffett_signal(close, ema20, ema200, rsi, macd, signal, adx, volume, vol
         elif close < ema200:
             trend = "BEAR"
     
-    # 2. Momentum
     momentum = "NEUTRAL"
     if macd is not None and signal is not None:
-        if macd > signal:
-            momentum = "BULLISH"
-        else:
-            momentum = "BEARISH"
+        momentum = "BULLISH" if macd > signal else "BEARISH"
     
-    # 3. Volume Confirmation (Warren: "Volume precedes price")
     volume_strength = "WEAK"
-    if volume and volume_ma and volume > volume_ma * 1.2:
-        volume_strength = "STRONG"
-    elif volume and volume_ma and volume > volume_ma:
-        volume_strength = "NORMAL"
+    if volume and volume_ma:
+        if volume > volume_ma * 1.2:
+            volume_strength = "STRONG"
+        elif volume > volume_ma:
+            volume_strength = "NORMAL"
     
-    # 4. Value Zones (RSI extremes)
     rsi_zone = "NEUTRAL"
     if rsi:
         if rsi < 30:
-            rsi_zone = "OVERSOLD 💎"
+            rsi_zone = "OVERSOLD"
         elif rsi > 70:
-            rsi_zone = "OVERBOUGHT 🔥"
-        elif 40 <= rsi <= 60:
-            rsi_zone = "BALANCED"
+            rsi_zone = "OVERBOUGHT"
     
-    # 5. Ultimate Signal (Confluence Logic)
     signal_text = "⏸️ WAIT"
     confidence = 0
     
-    # STRONG BUY Conditions
     if (trend == "BULL" and trend_quality == "STRONG" and momentum == "BULLISH" 
         and volume_strength in ["STRONG", "NORMAL"] and rsi and rsi < 65):
         signal_text = "🚀 STRONG BUY"
         confidence = 90
-    
-    # DIP BUY (Buffett: "Be greedy when others are fearful")
     elif (trend == "BULL" and rsi and rsi < 35 and close and ema20 and close < ema20):
-        signal_text = "📉 DIP BUY (Value)"
+        signal_text = "📉 DIP BUY"
         confidence = 75
-    
-    # OVERSOLD Opportunity (Near support)
-    elif (rsi_zone == "OVERSOLD 💎" and close and s1 and close <= s1 * 1.02):
-        signal_text = "💎 EXTREME VALUE (Rare)"
+    elif (rsi_zone == "OVERSOLD" and close and s1 and close <= s1 * 1.02):
+        signal_text = "💎 EXTREME VALUE"
         confidence = 85
-    
-    # HOLD (Trend intact but momentum weak)
     elif (trend == "BULL" and close and ema20 and close > ema20):
         signal_text = "✅ HOLD"
         confidence = 60
-    
-    # SELL Signals
     elif (trend == "BEAR" and trend_quality == "STRONG" and momentum == "BEARISH"):
         signal_text = "🔴 STRONG SELL"
         confidence = 90
-    
-    # OVERBOUGHT Warning (Near resistance)
-    elif (rsi_zone == "OVERBOUGHT 🔥" and close and r1 and close >= r1 * 0.98):
-        signal_text = "⚠️ EXIT ZONE (Take Profit)"
+    elif (rsi_zone == "OVERBOUGHT" and close and r1 and close >= r1 * 0.98):
+        signal_text = "⚠️ EXIT ZONE"
         confidence = 70
-    
-    # REVERSAL Risk
     elif (trend == "BEAR" and momentum == "BULLISH" and adx and adx < 20):
         signal_text = "🔄 REVERSAL WATCH"
         confidence = 50
-    
-    # Weak Trend = Sideway
     elif trend_quality == "WEAK":
-        signal_text = "😴 SIDEWAY (No Trade)"
+        signal_text = "😴 SIDEWAY"
         confidence = 0
     
     return {
@@ -147,9 +117,10 @@ def main():
     ts = now_tw.strftime("%Y-%m-%d %H:%M")
 
     sa_path = "service_account.json"
-    ss = open_spreadsheet(sa_path, sheet_id)
     
-    # Lấy danh sách coin động từ Sheet config
+    print("🔐 Connecting to Google Sheets...")
+    ss = open_spreadsheet(sa_path, sheet_id)  # Auto retry if 503
+    
     current_coins = get_coins_from_sheet(ss)
 
     latest = [[
@@ -170,7 +141,7 @@ def main():
             screener = item[3] if len(item) > 3 else "crypto"
 
             # Auto-detect Forex/Gold
-            if "XAU" in sym.upper() or "XAG" in sym.upper() or "EURUSD" in sym.upper():
+            if any(x in sym.upper() for x in ["XAU", "XAG", "EURUSD", "GBPUSD"]):
                 if exchange == "BINANCE": 
                     exchange = "OANDA"
                 if screener == "crypto": 
@@ -196,15 +167,15 @@ def main():
                 r1 = d.get("Pivot.M.Classic.R1")
                 
                 result = get_buffett_signal(c, e20, e200, rsi, macd, sig, adx, vol, vol_ma, bb_u, bb_l, pivot, s1, r1)
-            
-                # CLEAN & STANDARDIZE
-                clean_symbol = sym.split(":")[-1].strip()  # Remove exchange prefix
-                timeframe = tf.strip().upper()              # Force uppercase
+
+                # STANDARDIZE (fix filter issue)
+                clean_symbol = sym.split(":")[-1].strip()
+                timeframe = tf.strip().upper()
                 
                 row = [
                     ts, 
-                    clean_symbol,      # ← Clean symbol (EURUSD not OANDA:EURUSD)
-                    timeframe,         # ← Standard TF (1D not 1d)
+                    clean_symbol,
+                    timeframe,
                     c, 
                     result["rsi"], 
                     result["adx"],
@@ -218,22 +189,22 @@ def main():
                 latest.append(row)
                 history_rows.append(row)
                 
-            print(f"✅ {sym} ({exchange}/{screener})")
+            print(f"✅ {clean_symbol} ({exchange}/{screener})")
                 
         except Exception as e:
             print(f"❌ Error fetching {sym}: {e}")
-            latest.append([ts, sym, "ERROR", str(e), 0, 0, "N/A", "N/A", "N/A", "ERROR", 0, 0, 0, 0, 0, 0])
+            latest.append([ts, sym, "ERROR", 0, 0, 0, "N/A", "N/A", "N/A", "ERROR", 0, 0, 0, 0, 0, 0])
 
+    print("📝 Writing to Google Sheets...")
     ws_latest = ensure_tab(ss, TAB_LATEST)
     ws_history = ensure_tab(ss, TAB_HISTORY)
 
     write_table(ws_latest, latest)
     append_rows(ws_history, history_rows)
     
-    print("🎨 Updating Dashboard visuals...")
+    print("🎨 Updating Dashboard...")
     update_dashboard_visuals(ss, latest)
     print("✅ Done! Pro Trader Dashboard updated successfully.")
 
 if __name__ == "__main__":
     main()
-
