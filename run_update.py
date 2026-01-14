@@ -195,11 +195,16 @@ def main():
                 s1 = d.get("Pivot.M.Classic.S1")
                 r1 = d.get("Pivot.M.Classic.R1")
                 
-                # Warren Buffett Logic
                 result = get_buffett_signal(c, e20, e200, rsi, macd, sig, adx, vol, vol_ma, bb_u, bb_l, pivot, s1, r1)
-
+            
+                # CLEAN & STANDARDIZE
+                clean_symbol = sym.split(":")[-1].strip()  # Remove exchange prefix
+                timeframe = tf.strip().upper()              # Force uppercase
+                
                 row = [
-                    ts, sym, tf, 
+                    ts, 
+                    clean_symbol,      # ← Clean symbol (EURUSD not OANDA:EURUSD)
+                    timeframe,         # ← Standard TF (1D not 1d)
                     c, 
                     result["rsi"], 
                     result["adx"],
@@ -231,3 +236,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
