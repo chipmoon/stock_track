@@ -1,14 +1,15 @@
 # sheets_writer.py
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+from google.oauth2.service_account import Credentials
 
 def open_spreadsheet(sa_json_path: str, sheet_id: str):
-    """Connect to Google Sheets"""
-    scope = [
-        "https://spreadsheets.google.com/feeds",
+    """Connect to Google Sheets using modern google-auth"""
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive",
     ]
-    creds = ServiceAccountCredentials.from_json_keyfile_name(sa_json_path, scope)
+
+    creds = Credentials.from_service_account_file(sa_json_path, scopes=scopes)
     client = gspread.authorize(creds)
     return client.open_by_key(sheet_id)
 
