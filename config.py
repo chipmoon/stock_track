@@ -1,26 +1,34 @@
 # config.py
 
-# Format mới: (Symbol, Name, Exchange, Screener)
-# Nếu Crypto: Exchange='BINANCE', Screener='crypto'
-# Nếu Vàng/Forex: Exchange='OANDA' (hoặc FX_IDC), Screener='cfd' (hoặc forex)
-
-COINS = [
-    # Crypto
+# Crypto symbols with fast timeframes
+CRYPTO_COINS = [
     ("BTCUSDT", "Bitcoin", "BINANCE", "crypto"),
     ("ETHUSDT", "Ethereum", "BINANCE", "crypto"),
     ("SOLUSDT", "Solana", "BINANCE", "crypto"),
+    ("PEPEUSDT", "PEPE", "BINANCE", "crypto"),
     ("LINKUSDT", "Chainlink", "BINANCE", "crypto"),
-    
-    # Gold / Forex
-    ("XAUUSD", "Gold Spot", "OANDA", "cfd"),
-    ("XAGUSD", "Silver Spot", "OANDA", "cfd"),
-    # Mẹo: Dùng screener='cfd' cho OANDA/FXCM thường ổn định hơn 'forex' với library này
+    ("BNBUSDT", "Binance Coin", "BINANCE", "crypto"),
 ]
 
-# Các biến mặc định cũ (giữ để fallback)
-EXCHANGE = "BINANCE"
-SCREENER = "crypto"
+# Stock symbols with slower timeframes
+STOCK_COINS = [
+    ("2455", "Visual Photonics", "TWSE", "taiwan"),
+    ("8096", "CoAsia", "TPEX", "taiwan"),
+    ("2330", "TSMC", "TWSE", "taiwan"),
+]
 
-TAB_LATEST = "latest"
+# Forex/Metals (can be in either category)
+FOREX_METALS = [
+    ("XAUUSD", "Gold", "OANDA", "cfd"),
+    ("EURUSD", "Euro", "FX_IDC", "forex"),
+]
+
+# Timeframes for each asset class
+CRYPTO_TIMEFRAMES = ["4H", "1D", "3D", "1W"]
+STOCK_TIMEFRAMES = ["1D", "3D", "1W", "1M"]
+
+# Tab names
+TAB_CRYPTO = "Crypto"
+TAB_STOCK = "Stock"
 TAB_HISTORY = "history"
-
+TAB_DASHBOARD = "Dashboard"
