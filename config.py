@@ -17,21 +17,22 @@ STOCK_COINS = [
     ("2330", "TSMC", "TWSE", "taiwan"),
 ]
 
-# Forex/Metals (optional - có thể thêm vào crypto hoặc riêng)
+# Forex/Metals (optional - can add later)
 FOREX_METALS = [
     ("XAUUSD", "Gold", "OANDA", "cfd"),
     ("EURUSD", "Euro", "FX_IDC", "forex"),
 ]
 
-# === FIXED TIMEFRAMES (Only use supported intervals) ===
-# Crypto: Fast trading (removed 3D - not supported)
+# === TIMEFRAMES (Only use supported intervals) ===
+# Crypto: Fast trading
 CRYPTO_TIMEFRAMES = ["4H", "1D", "1W"]
 
-# Stock: Longer term (removed 3D - not supported)  
+# Stock: Longer term  
 STOCK_TIMEFRAMES = ["1D", "1W", "1M"]
 
-# Tab names
+# === TAB NAMES ===
 TAB_CRYPTO = "Crypto"
 TAB_STOCK = "Stock"
 TAB_HISTORY = "history"
-TAB_DASHBOARD = "Dashboard"
+TAB_DASHBOARD_STOCK = "Dashboard_Stock"
+TAB_DASHBOARD_CRYPTO = "Dashboard_Crypto"

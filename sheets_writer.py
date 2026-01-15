@@ -1,204 +1,148 @@
 # sheets_writer.py
 import gspread
-from google.oauth2.service_account import Credentials
-import time
+from oauth2client.service_account import ServiceAccountCredentials
 
-SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive",
-]
-
-def open_spreadsheet(service_account_json_path: str, sheet_id: str, max_retries=3):
-    """
-    Mở Google Sheet với retry logic để tránh lỗi 503 tạm thời
-    """
-    creds = Credentials.from_service_account_file(service_account_json_path, scopes=SCOPES)
+def open_spreadsheet(sa_json_path: str, sheet_id: str):
+    """Connect to Google Sheets"""
+    scope = [
+        "https://spreadsheets.google.com/feeds",
+        "https://www.googleapis.com/auth/drive",
+    ]
+    creds = ServiceAccountCredentials.from_json_keyfile_name(sa_json_path, scope)
     client = gspread.authorize(creds)
-    
-    for attempt in range(max_retries):
-        try:
-            return client.open_by_key(sheet_id)
-        except gspread.exceptions.APIError as e:
-            if "503" in str(e) or "429" in str(e):  # Service unavailable or Rate limit
-                if attempt < max_retries - 1:
-                    wait_time = (attempt + 1) * 5  # 5s, 10s, 15s
-                    print(f"⚠️ Google Sheets API error: {e}. Retrying in {wait_time}s... (Attempt {attempt + 1}/{max_retries})")
-                    time.sleep(wait_time)
-                else:
-                    print(f"❌ Failed after {max_retries} attempts. Google Sheets may be temporarily down.")
-                    raise
-            else:
-                raise  # Other API errors (permission, etc.)
-        except Exception as e:
-            print(f"❌ Unexpected error opening spreadsheet: {e}")
-            raise
-    
-    raise RuntimeError("Failed to open spreadsheet after retries")
+    return client.open_by_key(sheet_id)
 
-def ensure_tab(spreadsheet, title: str, rows=2000, cols=30):
+
+def ensure_tab(ss, tab_name: str):
+    """Get or create worksheet"""
     try:
-        ws = spreadsheet.worksheet(title)
-    except gspread.WorksheetNotFound:
-        ws = spreadsheet.add_worksheet(title=title, rows=str(rows), cols=str(cols))
-    return ws
-
-def write_table(ws, values, max_retries=3):
-    """
-    Ghi dữ liệu với retry logic
-    """
-    for attempt in range(max_retries):
-        try:
-            ws.clear()
-            ws.update("A1", values, value_input_option="USER_ENTERED")
-            
-            # Format header
-            if len(values) > 0 and len(values[0]) > 0:
-                fmt_range = f"A1:{chr(64 + min(len(values[0]), 26))}1"
-                ws.format(fmt_range, {
-                    "textFormat": {"bold": True},
-                    "backgroundColor": {"red": 0.9, "green": 0.9, "blue": 0.9}
-                })
-            return
-        except gspread.exceptions.APIError as e:
-            if "503" in str(e) or "429" in str(e):
-                if attempt < max_retries - 1:
-                    wait_time = (attempt + 1) * 3
-                    print(f"⚠️ Write error: {e}. Retrying in {wait_time}s...")
-                    time.sleep(wait_time)
-                else:
-                    raise
-            else:
-                raise
-
-def append_rows(ws, rows, max_retries=3):
-    if not rows:
-        return
-        
-    for attempt in range(max_retries):
-        try:
-            ws.append_rows(rows, value_input_option="USER_ENTERED")
-            return
-        except gspread.exceptions.APIError as e:
-            if "503" in str(e) or "429" in str(e):
-                if attempt < max_retries - 1:
-                    wait_time = (attempt + 1) * 3
-                    print(f"⚠️ Append error: {e}. Retrying in {wait_time}s...")
-                    time.sleep(wait_time)
-                else:
-                    raise
-            else:
-                raise
-
-def update_dashboard_visuals(ss, latest_data):
-    """
-    Tự động tạo Dashboard với KPI và Pie Chart
-    """
-    try:
-        dash_ws = ss.worksheet("Dashboard")
-        ss.del_worksheet(dash_ws)
+        ws = ss.worksheet(tab_name)
+        print(f"✅ Tab '{tab_name}' exists")
+        return ws
     except:
-        pass
-    
-    dash_ws = ss.add_worksheet(title="Dashboard", rows="50", cols="20")
-    
-    # Tính toán KPI (Trend ở index 7, Signal ở index 9)
-    bull_count = 0
-    bear_count = 0
-    neutral_count = 0
-    strong_buy_count = 0
-    total = 0
-    
-    for row in latest_data[1:]:
-        if len(row) < 10:
-            continue
-            
-        trend = str(row[7]).strip().upper() if row[7] else "NEUTRAL"
-        signal = str(row[9]).strip().upper() if row[9] else "WAIT"
-        
-        if "BULL" in trend:
-            bull_count += 1
-        elif "BEAR" in trend:
-            bear_count += 1
-        else:
-            neutral_count += 1
-        
-        if "STRONG BUY" in signal:
-            strong_buy_count += 1
-            
-        total += 1
-    
-    # Ghi KPI
-    dash_ws.update("A1", [
-        ["📊 WARREN BUFFETT DASHBOARD"],
-        [""],
-        ["Total Signals", total],
-        ["🚀 BULLISH Trend", bull_count],
-        ["🔴 BEARISH Trend", bear_count],
-        ["😴 NEUTRAL/Sideway", neutral_count],
-        [""],
-        ["💎 Strong Buy Signals", strong_buy_count],
-    ])
-    
-    # Format
-    dash_ws.format("A1", {
-        "textFormat": {"bold": True, "fontSize": 16},
-        "backgroundColor": {"red": 0.2, "green": 0.3, "blue": 0.5}
-    })
-    dash_ws.format("A4", {
-        "textFormat": {"foregroundColor": {"red": 0.0, "green": 0.7, "blue": 0.0}, "bold": True}
-    })
-    dash_ws.format("A5", {
-        "textFormat": {"foregroundColor": {"red": 0.8, "green": 0.0, "blue": 0.0}, "bold": True}
-    })
-    
-    # Tạo Pie Chart
-    sheet_id = dash_ws.id
-    
-    requests = [{
-        "addChart": {
-            "chart": {
-                "spec": {
-                    "title": "Market Sentiment Distribution",
-                    "pieChart": {
-                        "legendPosition": "RIGHT_LEGEND",
-                        "domain": {
-                            "sourceRange": {
-                                "sources": [{
-                                    "sheetId": sheet_id,
-                                    "startRowIndex": 3,
-                                    "endRowIndex": 6,
-                                    "startColumnIndex": 0,
-                                    "endColumnIndex": 1
-                                }]
-                            }
-                        },
-                        "series": {
-                            "sourceRange": {
-                                "sources": [{
-                                    "sheetId": sheet_id,
-                                    "startRowIndex": 3,
-                                    "endRowIndex": 6,
-                                    "startColumnIndex": 1,
-                                    "endColumnIndex": 2
-                                }]
-                            }
-                        },
-                        "threeDimensional": True
-                    }
-                },
-                "position": {
-                    "overlayPosition": {
-                        "anchorCell": {"sheetId": sheet_id, "rowIndex": 0, "columnIndex": 3},
-                        "widthPixels": 450,
-                        "heightPixels": 300
-                    }
-                }
-            }
-        }
-    }]
-    
-    try:
-        ss.batch_update({"requests": requests})
-        print(f"📊 Dashboard: {bull_count} Bull | {bear_count} Bear | {strong_buy_count} Strong Buy")
-    except Exception as e:
-        print(f"⚠️ Chart creation skipped (non-critical): {e}")
+        ws = ss.add_worksheet(title=tab_name, rows=500, cols=20)
+        print(f"✅ Created tab '{tab_name}'")
+        return ws
+
+
+def write_table(ws, data):
+    """Write data with header to worksheet (clears existing data)"""
+    ws.clear()
+    ws.update(range_name="A1", values=data)
+    print(f"✅ Written {len(data)} rows to '{ws.title}'")
+
+
+def append_rows(ws, rows):
+    """Append rows to existing worksheet"""
+    ws.append_rows(rows, value_input_option="USER_ENTERED")
+    print(f"✅ Appended {len(rows)} rows to '{ws.title}'")
+
+
+def update_dashboard_crypto(ss, crypto_data):
+    """
+    Update Dashboard_Crypto with summary and top signals
+    crypto_data format: [header, row1, row2, ...]
+    """
+    from config import TAB_DASHBOARD_CRYPTO
+
+    ws = ensure_tab(ss, TAB_DASHBOARD_CRYPTO)
+    ws.clear()
+
+    # Extract header and data rows
+    header = crypto_data[0] if crypto_data else []
+    rows = crypto_data[1:] if len(crypto_data) > 1 else []
+
+    # Build dashboard
+    dashboard_content = []
+    dashboard_content.append(["📊 CRYPTO DASHBOARD"])
+    dashboard_content.append([])
+
+    # Summary statistics
+    if rows:
+        strong_buy = len([r for r in rows if "STRONG BUY" in str(r[9])])
+        dip_buy = len([r for r in rows if "DIP BUY" in str(r[9])])
+        hold = len([r for r in rows if "HOLD" in str(r[9])])
+        sell = len([r for r in rows if "SELL" in str(r[9])])
+
+        dashboard_content.append(["=== SIGNAL SUMMARY ==="])
+        dashboard_content.append(["🚀 Strong Buy:", strong_buy])
+        dashboard_content.append(["📉 Dip Buy:", dip_buy])
+        dashboard_content.append(["✅ Hold:", hold])
+        dashboard_content.append(["🔴 Sell:", sell])
+        dashboard_content.append([])
+
+        # Top opportunities (confidence >= 75)
+        dashboard_content.append(["=== TOP CRYPTO OPPORTUNITIES ==="])
+        dashboard_content.append(header)
+
+        top_signals = sorted(
+            [r for r in rows if r[10] >= 75],  # confidence >= 75
+            key=lambda x: x[10],  # sort by confidence
+            reverse=True
+        )[:10]  # top 10
+
+        dashboard_content.extend(top_signals)
+
+        if not top_signals:
+            dashboard_content.append(["No high-confidence signals at the moment"])
+    else:
+        dashboard_content.append(["No crypto data available"])
+
+    write_table(ws, dashboard_content)
+    print(f"✅ Dashboard_Crypto updated: {len(rows)} crypto signals")
+
+
+def update_dashboard_stock(ss, stock_data):
+    """
+    Update Dashboard_Stock with summary and top signals
+    stock_data format: [header, row1, row2, ...]
+    """
+    from config import TAB_DASHBOARD_STOCK
+
+    ws = ensure_tab(ss, TAB_DASHBOARD_STOCK)
+    ws.clear()
+
+    # Extract header and data rows
+    header = stock_data[0] if stock_data else []
+    rows = stock_data[1:] if len(stock_data) > 1 else []
+
+    # Build dashboard
+    dashboard_content = []
+    dashboard_content.append(["📈 STOCK DASHBOARD"])
+    dashboard_content.append([])
+
+    # Summary statistics
+    if rows:
+        strong_buy = len([r for r in rows if "STRONG BUY" in str(r[9])])
+        dip_buy = len([r for r in rows if "DIP BUY" in str(r[9])])
+        extreme_value = len([r for r in rows if "EXTREME VALUE" in str(r[9])])
+        hold = len([r for r in rows if "HOLD" in str(r[9])])
+        sell = len([r for r in rows if "SELL" in str(r[9])])
+
+        dashboard_content.append(["=== SIGNAL SUMMARY ==="])
+        dashboard_content.append(["🚀 Strong Buy:", strong_buy])
+        dashboard_content.append(["📉 Dip Buy:", dip_buy])
+        dashboard_content.append(["💎 Extreme Value:", extreme_value])
+        dashboard_content.append(["✅ Hold:", hold])
+        dashboard_content.append(["🔴 Sell:", sell])
+        dashboard_content.append([])
+
+        # Top opportunities (confidence >= 70)
+        dashboard_content.append(["=== TOP STOCK OPPORTUNITIES ==="])
+        dashboard_content.append(header)
+
+        top_signals = sorted(
+            [r for r in rows if r[10] >= 70],  # confidence >= 70
+            key=lambda x: x[10],  # sort by confidence
+            reverse=True
+        )[:10]  # top 10
+
+        dashboard_content.extend(top_signals)
+
+        if not top_signals:
+            dashboard_content.append(["No high-confidence signals at the moment"])
+    else:
+        dashboard_content.append(["No stock data available"])
+
+    write_table(ws, dashboard_content)
+    print(f"✅ Dashboard_Stock updated: {len(rows)} stock signals")
