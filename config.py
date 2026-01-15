@@ -1,35 +1,7 @@
 # config.py
 
-# === DEFAULT CONFIGURATION (Fallback if Google Sheet config not available) ===
-
-# Default crypto symbols
-DEFAULT_CRYPTO_COINS = [
-    ("BTCUSDT", "Bitcoin", "BINANCE", "crypto"),
-    ("ETHUSDT", "Ethereum", "BINANCE", "crypto"),
-    ("SOLUSDT", "Solana", "BINANCE", "crypto"),
-    ("PEPEUSDT", "PEPE", "BINANCE", "crypto"),
-    ("LINKUSDT", "Chainlink", "BINANCE", "crypto"),
-    ("BNBUSDT", "Binance Coin", "BINANCE", "crypto"),
-]
-
-# Default stock symbols
-DEFAULT_STOCK_COINS = [
-    ("2455", "Visual Photonics", "TWSE", "taiwan"),
-    ("8096", "CoAsia", "TPEX", "taiwan"),
-    ("2330", "TSMC", "TWSE", "taiwan"),
-]
-
-# Default forex/metals (optional)
-DEFAULT_FOREX_METALS = [
-    ("XAUUSD", "Gold", "OANDA", "cfd"),
-    ("EURUSD", "Euro", "FX_IDC", "forex"),
-]
-
 # === TIMEFRAMES (Only use supported intervals) ===
-# Crypto: Fast trading
 CRYPTO_TIMEFRAMES = ["4H", "1D", "1W"]
-
-# Stock: Longer term  
 STOCK_TIMEFRAMES = ["1D", "1W", "1M"]
 
 # === TAB NAMES ===
@@ -40,7 +12,7 @@ TAB_HISTORY = "history"
 TAB_DASHBOARD_STOCK = "Dashboard_Stock"
 TAB_DASHBOARD_CRYPTO = "Dashboard_Crypto"
 
-# === GLOBAL VARIABLES (Will be populated from Google Sheet) ===
+# === GLOBAL VARIABLES (populated from Google Sheet ONLY) ===
 CRYPTO_COINS = []
 STOCK_COINS = []
 FOREX_METALS = []
@@ -49,103 +21,129 @@ FOREX_METALS = []
 def load_config_from_sheet(ss):
     """
     Load configuration from Google Sheet 'config' tab
-    Expected format:
+    Expected format (case-insensitive):
 
-    Row 1: [Type, Symbol, Name, Exchange, Screener]
-    Row 2: [crypto, BTCUSDT, Bitcoin, BINANCE, crypto]
-    Row 3: [stock, 2330, TSMC, TWSE, taiwan]
-    ...
+    Row 1: [Symbol, Name, Exchange, Screener, Type] or [Type, Symbol, Name, Exchange, Screener]
+    Row 2+: Data rows
+
+    Example:
+    BTCUSDT | Bitcoin | Binance | crypto | crypto
+    2330 | TSMC | TWSE | taiwan | stock
     """
     global CRYPTO_COINS, STOCK_COINS, FOREX_METALS
 
     try:
-        print("📋 Loading config from Google Sheet...")
+        print("📋 Loading config from Google Sheet 'config' tab...")
         ws = ss.worksheet(TAB_CONFIG)
         all_rows = ws.get_all_values()
 
         if len(all_rows) < 2:
-            print("⚠️ Config tab empty or only has header. Using default config.")
-            CRYPTO_COINS = DEFAULT_CRYPTO_COINS
-            STOCK_COINS = DEFAULT_STOCK_COINS
-            FOREX_METALS = DEFAULT_FOREX_METALS
-            return
+            raise Exception("Config tab is empty or only has header")
 
-        # Skip header row
+        # Parse header to find column indices
+        header = [h.strip().lower() for h in all_rows[0]]
+
+        # Find column indices (flexible order)
+        try:
+            symbol_idx = header.index("symbol")
+            name_idx = header.index("name")
+            exchange_idx = header.index("exchange")
+            screener_idx = header.index("screener")
+
+            # Type column is optional (can be inferred from screener)
+            type_idx = header.index("type") if "type" in header else None
+        except ValueError as e:
+            raise Exception(f"Missing required column in header: {e}")
+
+        # Skip header row, process data
         config_rows = all_rows[1:]
 
         crypto_list = []
         stock_list = []
         forex_list = []
 
-        for row in config_rows:
-            if len(row) < 5:
-                continue  # Skip incomplete rows
-
-            asset_type = row[0].strip().lower()
-            symbol = row[1].strip()
-            name = row[2].strip()
-            exchange = row[3].strip()
-            screener = row[4].strip()
-
-            # Skip empty rows
-            if not symbol or not name:
+        for i, row in enumerate(config_rows, start=2):
+            if len(row) < 4:
+                print(f"⚠️ Row {i}: Incomplete data, skipping")
                 continue
 
-            entry = (symbol, name, exchange, screener)
+            try:
+                symbol = row[symbol_idx].strip()
+                name = row[name_idx].strip()
+                exchange = row[exchange_idx].strip()
+                screener = row[screener_idx].strip()
 
-            if asset_type == "crypto":
-                crypto_list.append(entry)
-            elif asset_type == "stock":
-                stock_list.append(entry)
-            elif asset_type in ["forex", "metal", "cfd"]:
-                forex_list.append(entry)
+                # Skip empty rows
+                if not symbol or not name:
+                    continue
+
+                # Determine asset type
+                if type_idx is not None and len(row) > type_idx:
+                    asset_type = row[type_idx].strip().lower()
+                else:
+                    # Infer from screener if Type column missing
+                    asset_type = screener.lower()
+
+                entry = (symbol, name, exchange, screener)
+
+                # Categorize based on type/screener
+                if asset_type in ["crypto", "cryptocurrency"]:
+                    crypto_list.append(entry)
+                    print(f"   ✅ Crypto: {symbol} ({name})")
+                elif asset_type in ["stock", "taiwan", "twse", "tpex"]:
+                    stock_list.append(entry)
+                    print(f"   ✅ Stock: {symbol} ({name})")
+                elif asset_type in ["forex", "metal", "cfd", "oanda"]:
+                    forex_list.append(entry)
+                    print(f"   ✅ Forex/Metal: {symbol} ({name})")
+                else:
+                    print(f"   ⚠️ Unknown type '{asset_type}' for {symbol}, skipping")
+
+            except Exception as e:
+                print(f"⚠️ Row {i}: Error parsing - {e}")
+                continue
 
         # Update global variables
-        CRYPTO_COINS = crypto_list if crypto_list else DEFAULT_CRYPTO_COINS
-        STOCK_COINS = stock_list if stock_list else DEFAULT_STOCK_COINS
-        FOREX_METALS = forex_list if forex_list else DEFAULT_FOREX_METALS
+        CRYPTO_COINS = crypto_list
+        STOCK_COINS = stock_list
+        FOREX_METALS = forex_list
 
-        print(f"✅ Loaded from config tab:")
+        print(f"\n✅ Loaded from config tab:")
         print(f"   - Crypto: {len(CRYPTO_COINS)} symbols")
         print(f"   - Stock: {len(STOCK_COINS)} symbols")
         print(f"   - Forex/Metals: {len(FOREX_METALS)} symbols")
 
+        if not CRYPTO_COINS and not STOCK_COINS:
+            raise Exception("No valid symbols loaded from config tab!")
+
     except Exception as e:
-        print(f"⚠️ Error reading config tab: {e}")
-        print("   Using default configuration...")
-        CRYPTO_COINS = DEFAULT_CRYPTO_COINS
-        STOCK_COINS = DEFAULT_STOCK_COINS
-        FOREX_METALS = DEFAULT_FOREX_METALS
+        print(f"❌ Error reading config tab: {e}")
+        raise RuntimeError(f"Cannot load config from Google Sheet: {e}")
 
 
 def ensure_config_tab(ss):
     """
-    Create config tab if it doesn't exist, populate with default values
+    Create config tab if it doesn't exist with example format
     """
     try:
         ws = ss.worksheet(TAB_CONFIG)
         print(f"✅ Config tab exists")
+        return ws
     except:
-        print(f"📝 Creating config tab with default values...")
+        print(f"📝 Creating config tab with example format...")
         ws = ss.add_worksheet(title=TAB_CONFIG, rows=100, cols=5)
 
-        # Header
-        header = ["Type", "Symbol", "Name", "Exchange", "Screener"]
+        # Header + Example data
+        example_data = [
+            ["Symbol", "Name", "Exchange", "Screener", "Type"],
+            ["BTCUSDT", "Bitcoin", "BINANCE", "crypto", "crypto"],
+            ["ETHUSDT", "Ethereum", "BINANCE", "crypto", "crypto"],
+            ["2330", "TSMC", "TWSE", "taiwan", "stock"],
+            ["2455", "Visual Photonics", "TWSE", "taiwan", "stock"],
+            ["XAUUSD", "Gold", "OANDA", "cfd", "forex"],
+        ]
 
-        # Default data
-        default_data = [header]
-
-        # Add crypto
-        for item in DEFAULT_CRYPTO_COINS:
-            default_data.append(["crypto", item[0], item[1], item[2], item[3]])
-
-        # Add stocks
-        for item in DEFAULT_STOCK_COINS:
-            default_data.append(["stock", item[0], item[1], item[2], item[3]])
-
-        # Add forex/metals
-        for item in DEFAULT_FOREX_METALS:
-            default_data.append(["forex", item[0], item[1], item[2], item[3]])
-
-        ws.update("A1", default_data)
-        print(f"✅ Config tab created with {len(default_data)-1} default entries")
+        ws.update("A1", example_data)
+        print(f"✅ Config tab created with example data")
+        print(f"⚠️ Please customize the config tab and run again!")
+        return ws
