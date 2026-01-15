@@ -198,14 +198,14 @@ def main():
     load_config_from_sheet(ss)
 
     # Import after loading (so we get the updated values)
-    from config import CRYPTO_COINS, STOCK_COINS
+    from config import CRYPTO_COINS, STOCK_COINS, FOREX_METALS
 
     # === STEP 3: DELETE OLD TABS TO AVOID CONFUSION ===
     print("\n🗑️ Removing old tabs if they exist...")
     delete_tab_if_exists(ss, "latest")
     delete_tab_if_exists(ss, "Dashboard")
 
-    # Header for both tabs
+    # Header for all tabs
     header = [
         "Symbol", "Name", "TF",
         "Price", "RSI", "ADX", "Vol.Strength",
@@ -213,10 +213,17 @@ def main():
         "EMA20", "EMA200", "Pivot", "S1", "R1"
     ]
 
-    # === CRYPTO TAB ===
-    print(f"\n🚀 Processing {len(CRYPTO_COINS)} Crypto symbols (TF: {CRYPTO_TIMEFRAMES})...")
+    # === CRYPTO TAB (includes forex/metals with crypto timeframes) ===
+    print(f"\n🚀 Processing Crypto & Forex/Metals (TF: {CRYPTO_TIMEFRAMES})...")
+
+    # Combine crypto + forex/metals
+    all_crypto_assets = CRYPTO_COINS + FOREX_METALS
+    print(f"   - Pure Crypto: {len(CRYPTO_COINS)} symbols")
+    print(f"   - Forex/Metals: {len(FOREX_METALS)} symbols")
+    print(f"   - Total: {len(all_crypto_assets)} symbols")
+
     crypto_data = [header]
-    crypto_rows = process_symbols(CRYPTO_COINS, CRYPTO_TIMEFRAMES, "CRYPTO")
+    crypto_rows = process_symbols(all_crypto_assets, CRYPTO_TIMEFRAMES, "CRYPTO/FOREX")
     crypto_data.extend(crypto_rows)
 
     ws_crypto = ensure_tab(ss, TAB_CRYPTO)
@@ -255,10 +262,10 @@ def main():
     update_dashboard_stock(ss, stock_data)
 
     print(f"\n✅ Done! Updated:")
-    print(f"   - Crypto: {len([r for r in crypto_rows if r[2] != 'ERROR'])} signals")
+    print(f"   - Crypto (+ Forex/Metals): {len([r for r in crypto_rows if r[2] != 'ERROR'])} signals")
     print(f"   - Stock: {len([r for r in stock_rows if r[2] != 'ERROR'])} signals")
     print(f"   - History: {len(history_rows)} records")
-    print(f"   - Dashboard_Crypto: Top crypto opportunities")
+    print(f"   - Dashboard_Crypto: Top crypto/forex opportunities")
     print(f"   - Dashboard_Stock: Top stock opportunities")
 
 if __name__ == "__main__":
