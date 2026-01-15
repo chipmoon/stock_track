@@ -1,4 +1,6 @@
-tradingview-ta==3.3.0
-gspread==6.1.2
-google-auth==2.29.0
-pandas==2.2.2
+gspread>=5.12.0
+google-auth>=2.23.0
+google-auth-oauthlib>=1.1.0
+google-auth-httplib2>=0.1.1
+tradingview-ta>=3.3.0
+requests>=2.31.0
