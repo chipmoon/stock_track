@@ -2,10 +2,10 @@
 import os
 from datetime import datetime, timezone, timedelta
 from config import (
-    CRYPTO_COINS, STOCK_COINS, FOREX_METALS,
     CRYPTO_TIMEFRAMES, STOCK_TIMEFRAMES,
     TAB_CRYPTO, TAB_STOCK, TAB_HISTORY,
-    TAB_DASHBOARD_STOCK, TAB_DASHBOARD_CRYPTO
+    TAB_DASHBOARD_STOCK, TAB_DASHBOARD_CRYPTO,
+    load_config_from_sheet, ensure_config_tab
 )
 from tv_fetch import fetch_multi_timeframes
 from sheets_writer import (
@@ -191,7 +191,16 @@ def main():
     print("🔐 Connecting to Google Sheets...")
     ss = open_spreadsheet(sa_path, sheet_id)
 
-    # === DELETE OLD TABS TO AVOID CONFUSION ===
+    # === STEP 1: ENSURE CONFIG TAB EXISTS ===
+    ensure_config_tab(ss)
+
+    # === STEP 2: LOAD CONFIG FROM GOOGLE SHEET ===
+    load_config_from_sheet(ss)
+
+    # Import after loading (so we get the updated values)
+    from config import CRYPTO_COINS, STOCK_COINS
+
+    # === STEP 3: DELETE OLD TABS TO AVOID CONFUSION ===
     print("\n🗑️ Removing old tabs if they exist...")
     delete_tab_if_exists(ss, "latest")
     delete_tab_if_exists(ss, "Dashboard")
