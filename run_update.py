@@ -101,15 +101,32 @@ def process_symbols(symbols, timeframes, asset_type):
         screener = item[3]
         
         try:
+            print(f"🔄 Fetching {asset_type}: {sym} ({exchange}/{screener})...")
+            
             # Fetch data for all timeframes
             data = fetch_multi_timeframes(sym, exchange, screener, timeframes)
             
+            if not data:
+                print(f"❌ No data returned for {sym}")
+                rows.append([
+                    normalize_value(sym), name, "ERROR", 0, 0, 0,
+                    "N/A", "N/A", "N/A", "NO DATA", 0, 0, 0, 0, 0, 0
+                ])
+                continue
+            
             for tf in timeframes:
                 if tf not in data or not data[tf]:
+                    print(f"⚠️ Skipping {sym} {tf} - no data")
                     continue
                     
                 d = data[tf]
                 c = d.get("close")
+                
+                # Skip if no price data
+                if not c:
+                    print(f"⚠️ Skipping {sym} {tf} - no close price")
+                    continue
+                
                 e20 = d.get("EMA20")
                 e200 = d.get("EMA200")
                 rsi = d.get("RSI")
@@ -145,13 +162,15 @@ def process_symbols(symbols, timeframes, asset_type):
                 ]
                 rows.append(row)
             
-            print(f"✅ {asset_type}: {clean_symbol} ({exchange}/{screener})")
+            print(f"✅ {asset_type}: {clean_symbol} - {len([tf for tf in timeframes if tf in data and data[tf]])} timeframes OK")
             
         except Exception as e:
-            print(f"❌ Error {asset_type} {sym}: {e}")
+            print(f"❌ Critical error {asset_type} {sym}: {e}")
+            import traceback
+            traceback.print_exc()
             rows.append([
                 normalize_value(sym), name, "ERROR", 0, 0, 0,
-                "N/A", "N/A", "N/A", "ERROR", 0, 0, 0, 0, 0, 0
+                "N/A", "N/A", "N/A", f"ERROR: {str(e)[:30]}", 0, 0, 0, 0, 0, 0
             ])
     
     return rows
@@ -179,7 +198,7 @@ def main():
     ]
     
     # === CRYPTO TAB ===
-    print(f"\n🚀 Processing {len(CRYPTO_COINS)} Crypto symbols...")
+    print(f"\n🚀 Processing {len(CRYPTO_COINS)} Crypto symbols (TF: {CRYPTO_TIMEFRAMES})...")
     crypto_data = [header]
     crypto_rows = process_symbols(CRYPTO_COINS, CRYPTO_TIMEFRAMES, "CRYPTO")
     crypto_data.extend(crypto_rows)
@@ -188,7 +207,7 @@ def main():
     write_table(ws_crypto, crypto_data)
     
     # === STOCK TAB ===
-    print(f"\n📊 Processing {len(STOCK_COINS)} Stock symbols...")
+    print(f"\n📊 Processing {len(STOCK_COINS)} Stock symbols (TF: {STOCK_TIMEFRAMES})...")
     stock_data = [header]
     stock_rows = process_symbols(STOCK_COINS, STOCK_TIMEFRAMES, "STOCK")
     stock_data.extend(stock_rows)
@@ -201,23 +220,27 @@ def main():
     history_rows = []
     
     for row in crypto_rows:
-        history_rows.append([ts, "CRYPTO"] + row)
+        if row[2] != "ERROR":  # Only log successful fetches
+            history_rows.append([ts, "CRYPTO"] + row)
     for row in stock_rows:
-        history_rows.append([ts, "STOCK"] + row)
+        if row[2] != "ERROR":
+            history_rows.append([ts, "STOCK"] + row)
     
     ws_history = ensure_tab(ss, TAB_HISTORY)
     if len(ws_history.get_all_values()) == 0:
         ws_history.update("A1", [history_header])
-    append_rows(ws_history, history_rows)
+    
+    if history_rows:
+        append_rows(ws_history, history_rows)
     
     # === DASHBOARD ===
     print("\n🎨 Updating Dashboard...")
-    combined_data = [header] + crypto_rows + stock_rows
+    combined_data = [header] + [r for r in crypto_rows + stock_rows if r[2] != "ERROR"]
     update_dashboard_visuals(ss, combined_data)
     
     print(f"\n✅ Done! Updated:")
-    print(f"   - Crypto: {len(crypto_rows)} signals ({CRYPTO_TIMEFRAMES})")
-    print(f"   - Stock: {len(stock_rows)} signals ({STOCK_TIMEFRAMES})")
+    print(f"   - Crypto: {len([r for r in crypto_rows if r[2] != 'ERROR'])} signals")
+    print(f"   - Stock: {len([r for r in stock_rows if r[2] != 'ERROR'])} signals")
     print(f"   - History: {len(history_rows)} records")
 
 if __name__ == "__main__":
