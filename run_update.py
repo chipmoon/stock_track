@@ -10,7 +10,8 @@ from config import (
 from tv_fetch import fetch_multi_timeframes
 from sheets_writer import (
     open_spreadsheet, ensure_tab, write_table, 
-    append_rows, update_dashboard_crypto, update_dashboard_stock
+    append_rows, update_dashboard_crypto, update_dashboard_stock,
+    delete_tab_if_exists
 )
 
 def normalize_value(value):
@@ -189,6 +190,11 @@ def main():
 
     print("🔐 Connecting to Google Sheets...")
     ss = open_spreadsheet(sa_path, sheet_id)
+
+    # === DELETE OLD TABS TO AVOID CONFUSION ===
+    print("\n🗑️ Removing old tabs if they exist...")
+    delete_tab_if_exists(ss, "latest")
+    delete_tab_if_exists(ss, "Dashboard")
 
     # Header for both tabs
     header = [

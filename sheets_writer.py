@@ -26,6 +26,16 @@ def ensure_tab(ss, tab_name: str):
         return ws
 
 
+def delete_tab_if_exists(ss, tab_name: str):
+    """Delete a tab if it exists"""
+    try:
+        ws = ss.worksheet(tab_name)
+        ss.del_worksheet(ws)
+        print(f"🗑️ Deleted old tab '{tab_name}'")
+    except:
+        print(f"ℹ️ Tab '{tab_name}' doesn't exist (nothing to delete)")
+
+
 def write_table(ws, data):
     """Write data with header to worksheet (clears existing data)"""
     ws.clear()
@@ -43,6 +53,7 @@ def update_dashboard_crypto(ss, crypto_data):
     """
     Update Dashboard_Crypto with summary and top signals
     crypto_data format: [header, row1, row2, ...]
+    Count based on UNIQUE SYMBOLS, not total rows
     """
     from config import TAB_DASHBOARD_CRYPTO
 
@@ -58,18 +69,34 @@ def update_dashboard_crypto(ss, crypto_data):
     dashboard_content.append(["📊 CRYPTO DASHBOARD"])
     dashboard_content.append([])
 
-    # Summary statistics
+    # Summary statistics - COUNT UNIQUE SYMBOLS
     if rows:
-        strong_buy = len([r for r in rows if "STRONG BUY" in str(r[9])])
-        dip_buy = len([r for r in rows if "DIP BUY" in str(r[9])])
-        hold = len([r for r in rows if "HOLD" in str(r[9])])
-        sell = len([r for r in rows if "SELL" in str(r[9])])
+        # Group by symbol to count unique stocks
+        symbol_signals = {}
+        for r in rows:
+            symbol = r[0]  # Symbol column
+            signal = str(r[9])  # Buffett Signal column
 
-        dashboard_content.append(["=== SIGNAL SUMMARY ==="])
+            # Track the strongest signal per symbol (highest confidence)
+            if symbol not in symbol_signals:
+                symbol_signals[symbol] = {"signal": signal, "confidence": r[10]}
+            else:
+                # Keep the signal with highest confidence
+                if r[10] > symbol_signals[symbol]["confidence"]:
+                    symbol_signals[symbol] = {"signal": signal, "confidence": r[10]}
+
+        # Count unique symbols per signal type
+        strong_buy = len([s for s in symbol_signals.values() if "STRONG BUY" in s["signal"]])
+        dip_buy = len([s for s in symbol_signals.values() if "DIP BUY" in s["signal"]])
+        hold = len([s for s in symbol_signals.values() if "HOLD" in s["signal"] and "STRONG BUY" not in s["signal"]])
+        sell = len([s for s in symbol_signals.values() if "SELL" in s["signal"]])
+
+        dashboard_content.append(["=== SIGNAL SUMMARY (Unique Symbols) ==="])
         dashboard_content.append(["🚀 Strong Buy:", strong_buy])
         dashboard_content.append(["📉 Dip Buy:", dip_buy])
         dashboard_content.append(["✅ Hold:", hold])
         dashboard_content.append(["🔴 Sell:", sell])
+        dashboard_content.append(["📊 Total Symbols:", len(symbol_signals)])
         dashboard_content.append([])
 
         # Top opportunities (confidence >= 75)
@@ -90,13 +117,14 @@ def update_dashboard_crypto(ss, crypto_data):
         dashboard_content.append(["No crypto data available"])
 
     write_table(ws, dashboard_content)
-    print(f"✅ Dashboard_Crypto updated: {len(rows)} crypto signals")
+    print(f"✅ Dashboard_Crypto updated: {len(rows)} crypto signals from {len(symbol_signals) if rows else 0} unique symbols")
 
 
 def update_dashboard_stock(ss, stock_data):
     """
     Update Dashboard_Stock with summary and top signals
     stock_data format: [header, row1, row2, ...]
+    Count based on UNIQUE SYMBOLS, not total rows
     """
     from config import TAB_DASHBOARD_STOCK
 
@@ -112,20 +140,36 @@ def update_dashboard_stock(ss, stock_data):
     dashboard_content.append(["📈 STOCK DASHBOARD"])
     dashboard_content.append([])
 
-    # Summary statistics
+    # Summary statistics - COUNT UNIQUE SYMBOLS
     if rows:
-        strong_buy = len([r for r in rows if "STRONG BUY" in str(r[9])])
-        dip_buy = len([r for r in rows if "DIP BUY" in str(r[9])])
-        extreme_value = len([r for r in rows if "EXTREME VALUE" in str(r[9])])
-        hold = len([r for r in rows if "HOLD" in str(r[9])])
-        sell = len([r for r in rows if "SELL" in str(r[9])])
+        # Group by symbol to count unique stocks
+        symbol_signals = {}
+        for r in rows:
+            symbol = r[0]  # Symbol column
+            signal = str(r[9])  # Buffett Signal column
 
-        dashboard_content.append(["=== SIGNAL SUMMARY ==="])
+            # Track the strongest signal per symbol (highest confidence)
+            if symbol not in symbol_signals:
+                symbol_signals[symbol] = {"signal": signal, "confidence": r[10]}
+            else:
+                # Keep the signal with highest confidence
+                if r[10] > symbol_signals[symbol]["confidence"]:
+                    symbol_signals[symbol] = {"signal": signal, "confidence": r[10]}
+
+        # Count unique symbols per signal type
+        strong_buy = len([s for s in symbol_signals.values() if "STRONG BUY" in s["signal"]])
+        dip_buy = len([s for s in symbol_signals.values() if "DIP BUY" in s["signal"]])
+        extreme_value = len([s for s in symbol_signals.values() if "EXTREME VALUE" in s["signal"]])
+        hold = len([s for s in symbol_signals.values() if "HOLD" in s["signal"] and "STRONG BUY" not in s["signal"]])
+        sell = len([s for s in symbol_signals.values() if "SELL" in s["signal"]])
+
+        dashboard_content.append(["=== SIGNAL SUMMARY (Unique Symbols) ==="])
         dashboard_content.append(["🚀 Strong Buy:", strong_buy])
         dashboard_content.append(["📉 Dip Buy:", dip_buy])
         dashboard_content.append(["💎 Extreme Value:", extreme_value])
         dashboard_content.append(["✅ Hold:", hold])
         dashboard_content.append(["🔴 Sell:", sell])
+        dashboard_content.append(["📊 Total Symbols:", len(symbol_signals)])
         dashboard_content.append([])
 
         # Top opportunities (confidence >= 70)
@@ -146,4 +190,4 @@ def update_dashboard_stock(ss, stock_data):
         dashboard_content.append(["No stock data available"])
 
     write_table(ws, dashboard_content)
-    print(f"✅ Dashboard_Stock updated: {len(rows)} stock signals")
+    print(f"✅ Dashboard_Stock updated: {len(rows)} stock signals from {len(symbol_signals) if rows else 0} unique symbols")
