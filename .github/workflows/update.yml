@@ -1,9 +1,10 @@
-name: Update Crypto Dashboard
+name: Update Crypto & Stock Dashboard
+
 on:
   schedule:
-    - cron: "30 0 * * *"   # 08:30 TW
-    - cron: "0 9 * * *"    # 17:00 TW
-    - cron: "0 13 * * *"   # 21:00 TW
+    - cron: "0 1 * * *"    # 9AM GMT+8 (1AM UTC)
+    - cron: "0 5 * * *"    # 1PM GMT+8 (5AM UTC)
+    - cron: "0 12 * * *"   # 8PM GMT+8 (12PM UTC)
   workflow_dispatch:
 
 jobs:
@@ -24,11 +25,7 @@ jobs:
           SA_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
         run: |
           echo "$SA_JSON" > service_account.json
-      - name: Debug secrets
-        env:
-          SHEET_ID: ${{ secrets.SHEET_ID }}
-        run: |
-          echo "SHEET_ID exists: ${SHEET_ID:0:10}..."
+
       - name: Run update
         env:
           SHEET_ID: ${{ secrets.SHEET_ID }}
