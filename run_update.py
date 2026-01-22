@@ -3,7 +3,7 @@ import os
 from datetime import datetime, timezone, timedelta
 from config import (
     CRYPTO_TIMEFRAMES, STOCK_TIMEFRAMES,
-    TAB_CRYPTO, TAB_STOCK_TW, TAB_STOCK_VN, TAB_HISTORY,
+    TAB_CONFIG, TAB_CRYPTO, TAB_STOCK_TW, TAB_STOCK_VN, TAB_HISTORY,
     TAB_DASHBOARD_STOCK_TW, TAB_DASHBOARD_STOCK_VN, TAB_DASHBOARD_CRYPTO,
     load_config_from_sheet, ensure_config_tab
 )
@@ -177,6 +177,38 @@ def process_symbols(symbols, timeframes, asset_type):
     return rows
 
 
+def reorder_tabs(ss):
+    """
+    Reorder tabs in the desired sequence:
+    config => history => Crypto => Stock_TW => Stock_VN => Dashboard_Crypto => Dashboard_Stock_TW => Dashboard_Stock_VN
+    """
+    desired_order = [
+        TAB_CONFIG,
+        TAB_HISTORY,
+        TAB_CRYPTO,
+        TAB_STOCK_TW,
+        TAB_STOCK_VN,
+        TAB_DASHBOARD_CRYPTO,
+        TAB_DASHBOARD_STOCK_TW,
+        TAB_DASHBOARD_STOCK_VN
+    ]
+
+    print("\n📑 Reordering tabs...")
+    worksheets = ss.worksheets()
+
+    # Create a mapping of tab names to worksheet objects
+    ws_map = {ws.title: ws for ws in worksheets}
+
+    # Reorder tabs
+    for index, tab_name in enumerate(desired_order):
+        if tab_name in ws_map:
+            try:
+                ws_map[tab_name].update_index(index)
+                print(f"   ✅ {tab_name} → position {index + 1}")
+            except Exception as e:
+                print(f"   ⚠️ Could not reorder {tab_name}: {e}")
+
+
 def main():
     sheet_id = os.environ.get("SHEET_ID")
     if not sheet_id:
@@ -214,38 +246,28 @@ def main():
         "EMA20", "EMA200", "Pivot", "S1", "R1"
     ]
 
-    # === CRYPTO TAB (includes forex/metals) ===
+    # === PROCESS DATA (but don't write yet) ===
+
+    # Crypto
     print(f"\n🚀 Processing Crypto & Forex/Metals...")
     all_crypto_assets = CRYPTO_COINS + FOREX_METALS
     print(f"   - Crypto: {len(CRYPTO_COINS)} symbols")
     print(f"   - Forex/Metals: {len(FOREX_METALS)} symbols")
-
-    crypto_data = [header]
     crypto_rows = process_symbols(all_crypto_assets, CRYPTO_TIMEFRAMES, "CRYPTO/FOREX")
-    crypto_data.extend(crypto_rows)
 
-    ws_crypto = ensure_tab(ss, TAB_CRYPTO)
-    write_table(ws_crypto, crypto_data)
-
-    # === TAIWAN STOCK TAB ===
+    # Taiwan stocks
     print(f"\n🇹🇼 Processing {len(STOCK_COINS_TW)} Taiwan stocks...")
-    stock_tw_data = [header]
     stock_tw_rows = process_symbols(STOCK_COINS_TW, STOCK_TIMEFRAMES, "STOCK_TW")
-    stock_tw_data.extend(stock_tw_rows)
 
-    ws_stock_tw = ensure_tab(ss, TAB_STOCK_TW)
-    write_table(ws_stock_tw, stock_tw_data)
-
-    # === VIETNAM STOCK TAB ===
+    # Vietnam stocks
     print(f"\n🇻🇳 Processing {len(STOCK_COINS_VN)} Vietnam stocks...")
-    stock_vn_data = [header]
     stock_vn_rows = process_symbols(STOCK_COINS_VN, STOCK_TIMEFRAMES, "STOCK_VN")
-    stock_vn_data.extend(stock_vn_rows)
 
-    ws_stock_vn = ensure_tab(ss, TAB_STOCK_VN)
-    write_table(ws_stock_vn, stock_vn_data)
+    # === WRITE DATA IN ORDER ===
 
-    # === HISTORY TAB ===
+    # 1. Config tab (already exists)
+
+    # 2. History tab
     history_header = ["Time(TW)", "Asset Type"] + header
     history_rows = []
 
@@ -262,21 +284,39 @@ def main():
     ws_history = ensure_tab(ss, TAB_HISTORY)
     if len(ws_history.get_all_values()) == 0:
         ws_history.update("A1", [history_header])
-
     if history_rows:
         append_rows(ws_history, history_rows)
 
-    # === DASHBOARDS ===
+    # 3. Crypto tab
+    crypto_data = [header] + crypto_rows
+    ws_crypto = ensure_tab(ss, TAB_CRYPTO)
+    write_table(ws_crypto, crypto_data)
+
+    # 4. Stock_TW tab
+    stock_tw_data = [header] + stock_tw_rows
+    ws_stock_tw = ensure_tab(ss, TAB_STOCK_TW)
+    write_table(ws_stock_tw, stock_tw_data)
+
+    # 5. Stock_VN tab
+    stock_vn_data = [header] + stock_vn_rows
+    ws_stock_vn = ensure_tab(ss, TAB_STOCK_VN)
+    write_table(ws_stock_vn, stock_vn_data)
+
+    # 6-8. Dashboards
     print("\n🎨 Updating Dashboards...")
     update_dashboard_crypto(ss, crypto_data)
     update_dashboard_stock_tw(ss, stock_tw_data)
     update_dashboard_stock_vn(ss, stock_vn_data)
+
+    # === REORDER ALL TABS ===
+    reorder_tabs(ss)
 
     print(f"\n✅ Done! Updated:")
     print(f"   - Crypto: {len([r for r in crypto_rows if r[2] != 'ERROR'])} signals")
     print(f"   - Stock TW: {len([r for r in stock_tw_rows if r[2] != 'ERROR'])} signals")
     print(f"   - Stock VN: {len([r for r in stock_vn_rows if r[2] != 'ERROR'])} signals")
     print(f"   - History: {len(history_rows)} records")
+    print(f"\n📑 Tab order: config → history → Crypto → Stock_TW → Stock_VN → Dashboard_Crypto → Dashboard_Stock_TW → Dashboard_Stock_VN")
 
 if __name__ == "__main__":
     main()
