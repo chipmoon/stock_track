@@ -29,6 +29,7 @@ def load_config_from_sheet(ss):
     Example:
     BTCUSDT | Bitcoin | Binance | crypto | crypto
     2330 | TSMC | TWSE | taiwan | stock
+    BSR | Binh Son Refining | HOSE | vietnam | stock
     """
     global CRYPTO_COINS, STOCK_COINS, FOREX_METALS
 
@@ -86,16 +87,31 @@ def load_config_from_sheet(ss):
 
                 entry = (symbol, name, exchange, screener)
 
-                # Categorize based on type/screener
+                # === CATEGORIZE BASED ON TYPE/SCREENER ===
+
+                # Crypto assets
                 if asset_type in ["crypto", "cryptocurrency"]:
                     crypto_list.append(entry)
                     print(f"   ✅ Crypto: {symbol} ({name})")
-                elif asset_type in ["stock", "taiwan", "twse", "tpex"]:
+
+                # Stock markets (Taiwan + Vietnam + Other)
+                elif asset_type in [
+                    "stock", 
+                    # Taiwan exchanges
+                    "taiwan", "twse", "tpex",
+                    # Vietnam exchanges
+                    "vietnam", "hose", "hnx", "upcom",
+                    # US exchanges (bonus)
+                    "america", "nasdaq", "nyse"
+                ]:
                     stock_list.append(entry)
-                    print(f"   ✅ Stock: {symbol} ({name})")
-                elif asset_type in ["forex", "metal", "cfd", "oanda"]:
+                    print(f"   ✅ Stock: {symbol} ({name}) [{exchange}]")
+
+                # Forex/Metals/CFDs
+                elif asset_type in ["forex", "metal", "cfd", "oanda", "fx"]:
                     forex_list.append(entry)
                     print(f"   ✅ Forex/Metal: {symbol} ({name})")
+
                 else:
                     print(f"   ⚠️ Unknown type '{asset_type}' for {symbol}, skipping")
 
@@ -140,6 +156,7 @@ def ensure_config_tab(ss):
             ["ETHUSDT", "Ethereum", "BINANCE", "crypto", "crypto"],
             ["2330", "TSMC", "TWSE", "taiwan", "stock"],
             ["2455", "Visual Photonics", "TWSE", "taiwan", "stock"],
+            ["BSR", "Binh Son Refining", "HOSE", "vietnam", "stock"],
             ["XAUUSD", "Gold", "OANDA", "cfd", "forex"],
         ]
 
