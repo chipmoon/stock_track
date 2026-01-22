@@ -3,14 +3,15 @@ import os
 from datetime import datetime, timezone, timedelta
 from config import (
     CRYPTO_TIMEFRAMES, STOCK_TIMEFRAMES,
-    TAB_CRYPTO, TAB_STOCK, TAB_HISTORY,
-    TAB_DASHBOARD_STOCK, TAB_DASHBOARD_CRYPTO,
+    TAB_CRYPTO, TAB_STOCK_TW, TAB_STOCK_VN, TAB_HISTORY,
+    TAB_DASHBOARD_STOCK_TW, TAB_DASHBOARD_STOCK_VN, TAB_DASHBOARD_CRYPTO,
     load_config_from_sheet, ensure_config_tab
 )
 from tv_fetch import fetch_multi_timeframes
 from sheets_writer import (
     open_spreadsheet, ensure_tab, write_table, 
-    append_rows, update_dashboard_crypto, update_dashboard_stock,
+    append_rows, update_dashboard_crypto, 
+    update_dashboard_stock_tw, update_dashboard_stock_vn,
     delete_tab_if_exists
 )
 
@@ -105,7 +106,6 @@ def process_symbols(symbols, timeframes, asset_type):
         try:
             print(f"🔄 Fetching {asset_type}: {sym} ({exchange}/{screener})...")
 
-            # Fetch data for all timeframes
             data = fetch_multi_timeframes(sym, exchange, screener, timeframes)
 
             if not data:
@@ -124,7 +124,6 @@ def process_symbols(symbols, timeframes, asset_type):
                 d = data[tf]
                 c = d.get("close")
 
-                # Skip if no price data
                 if not c:
                     print(f"⚠️ Skipping {sym} {tf} - no close price")
                     continue
@@ -197,13 +196,15 @@ def main():
     # === STEP 2: LOAD CONFIG FROM GOOGLE SHEET ===
     load_config_from_sheet(ss)
 
-    # Import after loading (so we get the updated values)
-    from config import CRYPTO_COINS, STOCK_COINS, FOREX_METALS
+    # Import after loading
+    from config import CRYPTO_COINS, STOCK_COINS_TW, STOCK_COINS_VN, FOREX_METALS
 
-    # === STEP 3: DELETE OLD TABS TO AVOID CONFUSION ===
-    print("\n🗑️ Removing old tabs if they exist...")
+    # === STEP 3: DELETE OLD TABS ===
+    print("\n🗑️ Removing old tabs...")
     delete_tab_if_exists(ss, "latest")
     delete_tab_if_exists(ss, "Dashboard")
+    delete_tab_if_exists(ss, "Stock")  # Old combined stock tab
+    delete_tab_if_exists(ss, "Dashboard_Stock")  # Old combined dashboard
 
     # Header for all tabs
     header = [
@@ -213,14 +214,11 @@ def main():
         "EMA20", "EMA200", "Pivot", "S1", "R1"
     ]
 
-    # === CRYPTO TAB (includes forex/metals with crypto timeframes) ===
-    print(f"\n🚀 Processing Crypto & Forex/Metals (TF: {CRYPTO_TIMEFRAMES})...")
-
-    # Combine crypto + forex/metals
+    # === CRYPTO TAB (includes forex/metals) ===
+    print(f"\n🚀 Processing Crypto & Forex/Metals...")
     all_crypto_assets = CRYPTO_COINS + FOREX_METALS
-    print(f"   - Pure Crypto: {len(CRYPTO_COINS)} symbols")
+    print(f"   - Crypto: {len(CRYPTO_COINS)} symbols")
     print(f"   - Forex/Metals: {len(FOREX_METALS)} symbols")
-    print(f"   - Total: {len(all_crypto_assets)} symbols")
 
     crypto_data = [header]
     crypto_rows = process_symbols(all_crypto_assets, CRYPTO_TIMEFRAMES, "CRYPTO/FOREX")
@@ -229,25 +227,37 @@ def main():
     ws_crypto = ensure_tab(ss, TAB_CRYPTO)
     write_table(ws_crypto, crypto_data)
 
-    # === STOCK TAB ===
-    print(f"\n📊 Processing {len(STOCK_COINS)} Stock symbols (TF: {STOCK_TIMEFRAMES})...")
-    stock_data = [header]
-    stock_rows = process_symbols(STOCK_COINS, STOCK_TIMEFRAMES, "STOCK")
-    stock_data.extend(stock_rows)
+    # === TAIWAN STOCK TAB ===
+    print(f"\n🇹🇼 Processing {len(STOCK_COINS_TW)} Taiwan stocks...")
+    stock_tw_data = [header]
+    stock_tw_rows = process_symbols(STOCK_COINS_TW, STOCK_TIMEFRAMES, "STOCK_TW")
+    stock_tw_data.extend(stock_tw_rows)
 
-    ws_stock = ensure_tab(ss, TAB_STOCK)
-    write_table(ws_stock, stock_data)
+    ws_stock_tw = ensure_tab(ss, TAB_STOCK_TW)
+    write_table(ws_stock_tw, stock_tw_data)
 
-    # === HISTORY TAB (Combined) ===
+    # === VIETNAM STOCK TAB ===
+    print(f"\n🇻🇳 Processing {len(STOCK_COINS_VN)} Vietnam stocks...")
+    stock_vn_data = [header]
+    stock_vn_rows = process_symbols(STOCK_COINS_VN, STOCK_TIMEFRAMES, "STOCK_VN")
+    stock_vn_data.extend(stock_vn_rows)
+
+    ws_stock_vn = ensure_tab(ss, TAB_STOCK_VN)
+    write_table(ws_stock_vn, stock_vn_data)
+
+    # === HISTORY TAB ===
     history_header = ["Time(TW)", "Asset Type"] + header
     history_rows = []
 
     for row in crypto_rows:
-        if row[2] != "ERROR":  # Only log successful fetches
-            history_rows.append([ts, "CRYPTO"] + row)
-    for row in stock_rows:
         if row[2] != "ERROR":
-            history_rows.append([ts, "STOCK"] + row)
+            history_rows.append([ts, "CRYPTO"] + row)
+    for row in stock_tw_rows:
+        if row[2] != "ERROR":
+            history_rows.append([ts, "STOCK_TW"] + row)
+    for row in stock_vn_rows:
+        if row[2] != "ERROR":
+            history_rows.append([ts, "STOCK_VN"] + row)
 
     ws_history = ensure_tab(ss, TAB_HISTORY)
     if len(ws_history.get_all_values()) == 0:
@@ -256,17 +266,17 @@ def main():
     if history_rows:
         append_rows(ws_history, history_rows)
 
-    # === DASHBOARDS (Separate for Crypto and Stock) ===
+    # === DASHBOARDS ===
     print("\n🎨 Updating Dashboards...")
     update_dashboard_crypto(ss, crypto_data)
-    update_dashboard_stock(ss, stock_data)
+    update_dashboard_stock_tw(ss, stock_tw_data)
+    update_dashboard_stock_vn(ss, stock_vn_data)
 
     print(f"\n✅ Done! Updated:")
-    print(f"   - Crypto (+ Forex/Metals): {len([r for r in crypto_rows if r[2] != 'ERROR'])} signals")
-    print(f"   - Stock: {len([r for r in stock_rows if r[2] != 'ERROR'])} signals")
+    print(f"   - Crypto: {len([r for r in crypto_rows if r[2] != 'ERROR'])} signals")
+    print(f"   - Stock TW: {len([r for r in stock_tw_rows if r[2] != 'ERROR'])} signals")
+    print(f"   - Stock VN: {len([r for r in stock_vn_rows if r[2] != 'ERROR'])} signals")
     print(f"   - History: {len(history_rows)} records")
-    print(f"   - Dashboard_Crypto: Top crypto/forex opportunities")
-    print(f"   - Dashboard_Stock: Top stock opportunities")
 
 if __name__ == "__main__":
     main()
